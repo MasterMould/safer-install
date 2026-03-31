@@ -1,9 +1,11 @@
 # safer-install
 A just-in-time package maintainer for random internet scripts  
 
-go build -o safe-install
-#Setup  
-./setup.sh  
 
-#Usage
+#Setup  
+
+./setup.sh  
+go build -o safe-install  
+
+#Usage  
 ./safe-install curl -fsSL https://example.com/install.sh | bash
