@@ -1,51 +1,73 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORK_DIR="$SCRIPT_DIR/.safe-install"
-SRC_DIR="$WORK_DIR/src"
-BIN="$WORK_DIR/safe-install"
+APP_NAME="safe-install"
+REPO_URL="https://github.com/MasterMould/safer-install.git"
+BRANCH="dev"
+
+BASE_DIR="$HOME/.safe-install"
+SRC_DIR="$BASE_DIR/src"
+BIN="$BASE_DIR/$APP_NAME"
 
 # ================================================================
-# SELF-EXTRACTION
+# Clone or update repo
 # ================================================================
-_extract_payload() {
-    echo "📦 Extracting embedded payload..."
-
-    mkdir -p "$WORK_DIR"
-
-    local PAYLOAD_START
-    PAYLOAD_START=$(grep -n '^# __PAYLOAD_START__$' "$0" | cut -d: -f1)
-
-    if [[ -z "$PAYLOAD_START" ]]; then
-        echo "❌ Payload marker not found"
-        exit 1
+_sync_repo() {
+    if [[ ! -d "$SRC_DIR/.git" ]]; then
+        echo "📥 Cloning repository..."
+        git clone --branch "$BRANCH" "$REPO_URL" "$SRC_DIR"
+    else
+        echo "🔄 Updating repository..."
+        git -C "$SRC_DIR" fetch origin
+        git -C "$SRC_DIR" reset --hard "origin/$BRANCH"
     fi
-
-    tail -n +"$((PAYLOAD_START + 1))" "$0" \
-        | base64 -d \
-        | tar xzf - -C "$WORK_DIR" || {
-            echo "❌ Extraction failed"
-            exit 1
-        }
-
-    echo "✅ Payload extracted"
 }
 
 # ================================================================
-# BUILD
+# Install dependencies
 # ================================================================
-_build_binary() {
+_install_deps() {
+    echo "📥 Installing dependencies..."
+
+    sudo apt update
+    sudo apt install -y \
+        golang-go \
+        podman \
+        ruby \
+        ruby-dev \
+        build-essential \
+        git
+
+    sudo gem install --no-document fpm
+}
+
+# ================================================================
+# Check dependencies
+# ================================================================
+_check_deps() {
+    echo "🔍 Checking dependencies..."
+
+    local missing=0
+
+    for cmd in go podman fpm git; do
+        if ! command -v "$cmd" >/dev/null; then
+            missing=1
+        fi
+    done
+
+    if [[ "$missing" -eq 1 ]]; then
+        _install_deps
+    fi
+}
+
+# ================================================================
+# Build binary
+# ================================================================
+_build() {
     echo "⚙️ Building Go binary..."
 
     cd "$SRC_DIR"
-
-    if ! command -v go >/dev/null; then
-        echo "📥 Installing Go..."
-        sudo apt update
-        sudo apt install -y golang-go
-    fi
 
     go build -o "$BIN"
 
@@ -53,37 +75,38 @@ _build_binary() {
 }
 
 # ================================================================
-# DEPENDENCIES
+# CLI options
 # ================================================================
-_check_deps() {
-    echo "🔍 Checking dependencies..."
-
-    command -v podman >/dev/null || {
-        echo "📥 Installing Podman..."
-        sudo apt install -y podman
-    }
-
-    command -v fpm >/dev/null || {
-        echo "📥 Installing fpm..."
-        sudo apt install -y ruby ruby-dev build-essential
-        sudo gem install fpm
-    }
-}
+case "${1:-}" in
+    --reset)
+        echo "🧹 Resetting..."
+        rm -rf "$BASE_DIR"
+        exit 0
+        ;;
+    --update)
+        _sync_repo
+        _build
+        exit 0
+        ;;
+    --rebuild)
+        echo "🔁 Rebuilding..."
+        rm -f "$BIN"
+        ;;
+esac
 
 # ================================================================
-# FIRST RUN SETUP
+# Bootstrap
 # ================================================================
+mkdir -p "$BASE_DIR"
+
+_check_deps
+_sync_repo
+
 if [[ ! -f "$BIN" ]]; then
-    _extract_payload
-    _check_deps
-    _build_binary
+    _build
 fi
 
 # ================================================================
-# EXECUTE
+# Execute
 # ================================================================
 exec "$BIN" "$@"
-
-exit 0
-
-# __PAYLOAD_START__
