@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"bytes"
-	"fmt"
 	"os/exec"
 )
 
