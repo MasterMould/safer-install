@@ -71,7 +71,17 @@ _build() {
 
     go build -o "$BIN"
 
-    echo "✅ Build complete"
+    echo "✅ Build complete at $BIN"
+}
+
+_install_symlink() {
+    local TARGET="/usr/local/bin/safe-install"
+
+    if [[ ! -f "$TARGET" ]]; then
+        echo "🔗 Installing safe-install globally..."
+        sudo ln -sf "$BIN" "$TARGET"
+        echo "✅ Now you can run: safe-install"
+    fi
 }
 
 # ================================================================
@@ -105,6 +115,8 @@ _sync_repo
 if [[ ! -f "$BIN" ]]; then
     _build
 fi
+
+_install_symlink
 
 # ================================================================
 # Execute
